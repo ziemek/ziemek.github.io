@@ -21,25 +21,33 @@ class WaterQualityApp {
         // State
         this.currentParameter = 'temperature';
         this.currentView = 'time';
-        
+
         // Make app globally available for controls
         window.app = this;
     }
 
     async initialize() {
         try {
+            // Show loading indicator, hide charts
+            document.getElementById('loadingIndicator').style.display = 'flex';
+            document.getElementById('chartsContainer').style.display = 'none';
+
             // Load data
             await this.dataLoader.loadData();
-            
+
+            // Hide loading indicator, show charts
+            document.getElementById('loadingIndicator').style.display = 'none';
+            document.getElementById('chartsContainer').style.display = '';
+
             // Create visibility controls
             this.controlsManager.createVisibilityControls();
-            
+
             // Initial visualization
             this.updateVisualization();
-            
+
             // Setup event listeners
             this.setupEventListeners();
-            
+
         } catch (error) {
             console.error('Failed to initialize application:', error);
         }
@@ -69,7 +77,7 @@ class WaterQualityApp {
     updateVisualization() {
         // Update view toggle availability based on current parameter
         this.currentView = this.controlsManager.updateViewToggleVisibility(this.currentParameter);
-        
+
         // Create appropriate visualization
         if (this.currentView === 'depth') {
             this.depthProfileCharts.createDepthProfiles(this.currentParameter);

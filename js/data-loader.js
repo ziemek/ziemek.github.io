@@ -1,6 +1,9 @@
 // Data loading and management
 import { config } from './config.js';
 
+// Add a constant to control loading only water-quality.json
+const ONLY_LOAD_WATER_QUALITY = true;
+
 class DataLoader {
     constructor() {
         this.data = [];
@@ -10,8 +13,13 @@ class DataLoader {
 
     async loadData() {
         try {
-            // Get list of all JSON files in ./data directory
-            const dataFiles = await this.getDataFiles();
+            let dataFiles;
+            if (ONLY_LOAD_WATER_QUALITY) {
+                dataFiles = ['water-quality.json'];
+            } else {
+                // Get list of all JSON files in ./data directory
+                dataFiles = await this.getDataFiles();
+            }
 
             // Fetch and combine all JSON files
             const allData = [];
