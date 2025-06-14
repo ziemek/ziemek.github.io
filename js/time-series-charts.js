@@ -42,18 +42,21 @@ export class TimeSeriesCharts {
 
         visibleData.forEach(dataset => {
             const relevantMeasurements = dataset.measurements.filter(m =>
-                m.depth >= depthRange.min && m.depth <= depthRange.max
+                m.depth >= depthRange.min && m.depth <= depthRange.max &&
+                m[currentParameter] !== null && m[currentParameter] !== undefined
             );
 
             if (relevantMeasurements.length > 0) {
                 const avgValue = d3.mean(relevantMeasurements, d => d[currentParameter]);
-                timeSeriesData.push({
-                    lake: dataset.lake,
-                    date: new Date(dataset.date),
-                    value: avgValue,
-                    weather: dataset.weather,
-                    airTemp: dataset.air_temperature
-                });
+                if (avgValue !== undefined && avgValue !== null) {
+                    timeSeriesData.push({
+                        lake: dataset.lake,
+                        date: new Date(dataset.date),
+                        value: avgValue,
+                        weather: dataset.weather,
+                        airTemp: dataset.air_temperature
+                    });
+                }
             }
         });
 
@@ -94,7 +97,7 @@ export class TimeSeriesCharts {
         // Add axis labels
         svg.append('text')
             .attr('transform', 'rotate(-90)')
-            .attr('y', -40)
+            .attr('y', -55)
             .attr('x', -height / 2)
             .attr('dy', '1em')
             .style('text-anchor', 'middle')

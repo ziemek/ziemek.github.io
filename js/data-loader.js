@@ -1,8 +1,6 @@
 // Data loading and management
 import { config } from './config.js';
-
-// Add a constant to control loading only water-quality.json
-const ONLY_LOAD_WATER_QUALITY = true;
+import { dateToValidId, getDateOnly } from './utils.js';
 
 class DataLoader {
     constructor() {
@@ -13,109 +11,33 @@ class DataLoader {
 
     async loadData() {
         try {
-            let dataFiles;
-            if (ONLY_LOAD_WATER_QUALITY) {
-                dataFiles = ['water-quality.json'];
+            // Load the main water data file
+            const response = await fetch('./data/water-data.json');
+            
+            if (!response.ok) {
+                throw new Error(`Failed to fetch water-data.json: ${response.status}`);
+            }
+
+            const fileData = await response.json();
+            
+            // Handle array or single object data
+            if (Array.isArray(fileData)) {
+                this.data = fileData;
             } else {
-                // Get list of all JSON files in ./data directory
-                dataFiles = await this.getDataFiles();
+                this.data = [fileData];
             }
 
-            // Fetch and combine all JSON files
-            const allData = [];
-            for (const filename of dataFiles) {
-                try {
-                    const response = await fetch(`./data/${filename}`);
-                    if (response.ok) {
-                        const fileData = await response.json();
-                        // Add filename metadata to each record if needed
-                        if (Array.isArray(fileData)) {
-                            fileData.forEach(record => record._sourceFile = filename);
-                            allData.push(...fileData);
-                        } else {
-                            // Handle single object files
-                            fileData._sourceFile = filename;
-                            allData.push(fileData);
-                        }
-                    } else {
-                        console.warn(`Failed to fetch ${filename}: ${response.status}`);
-                    }
-                } catch (fileError) {
-                    console.warn(`Error loading ${filename}:`, fileError);
-                }
-            }
-
-            this.data = allData;
             this.initializeSeriesTracking();
             return this.data;
         } catch (error) {
             console.error('Error loading data:', error);
             d3.select('#chartsContainer').html(
                 '<p style="text-align: center; color: red; font-size: 18px;">' +
-                'Error loading data files. Please make sure JSON files exist in the ./data directory.' +
+                'Error loading water-data.json. Please make sure the file exists in the ./data directory.' +
                 '</p>'
             );
             throw error;
         }
-    }
-
-    async getDataFiles() {
-        // Method 1: Try to fetch a directory listing (works with some servers)
-        try {
-            const response = await fetch('./data/');
-            const html = await response.text();
-
-            // Parse HTML directory listing for water*.json files
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const links = Array.from(doc.querySelectorAll('a[href$=".json"]'))
-                .filter(link => link.getAttribute('href').startsWith('water'));
-
-            if (links.length > 0) {
-                return links.map(link => link.getAttribute('href'));
-            }
-        } catch (e) {
-            // Directory listing failed, fall back to known patterns
-        }
-
-        // Method 2: Try common filename patterns
-        const commonPatterns = [
-            'water-quality.json',
-            'data.json',
-            // Year patterns
-            ...Array.from({length: 10}, (_, i) => `${2015 + i}.json`),
-            ...Array.from({length: 10}, (_, i) => `water-quality-${2015 + i}.json`),
-            // Month patterns for current/recent years
-            ...this.generateMonthlyPatterns(['2023', '2024', '2025'])
-        ];
-
-        const existingFiles = [];
-        for (const filename of commonPatterns) {
-            try {
-                const response = await fetch(`./data/${filename}`, { method: 'HEAD' });
-                if (response.ok) {
-                    existingFiles.push(filename);
-                }
-            } catch (e) {
-                // File doesn't exist, continue
-            }
-        }
-
-        return existingFiles;
-    }
-
-    generateMonthlyPatterns(years) {
-        const patterns = [];
-        const months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
-
-        for (const year of years) {
-            for (const month of months) {
-                patterns.push(`${year}-${month}.json`);
-                patterns.push(`water-quality-${year}-${month}.json`);
-            }
-        }
-
-        return patterns;
     }
 
     // Initialize series tracking and visibility controls
@@ -165,15 +87,37 @@ class DataLoader {
                 this.visibleSeries.add(s.id);
             }
         });
+
+        // Update year checkbox state after date change
+        const year = new Date(date).getFullYear();
+        this.updateYearCheckboxState(year);
+    }
+
+    // Toggle date-only visibility (applies to all series with same calendar date)
+    toggleDateOnlyVisibility(dateOnly) {
+        const seriesForDateOnly = this.allSeries.filter(s => getDateOnly(s.date) === dateOnly);
+        const allChecked = seriesForDateOnly.every(s => this.visibleSeries.has(s.id));
+
+        seriesForDateOnly.forEach(s => {
+            if (allChecked) {
+                this.visibleSeries.delete(s.id);
+            } else {
+                this.visibleSeries.add(s.id);
+            }
+        });
+
+        // Update year checkbox state after date change
+        const year = new Date(dateOnly).getFullYear();
+        this.updateYearCheckboxState(year);
     }
 
     // Toggle all dates
     toggleAllDates(show) {
-        const uniqueDates = [...new Set(this.allSeries.map(s => s.date))];
+        const uniqueDateOnlys = [...new Set(this.allSeries.map(s => getDateOnly(s.date)))];
 
-        uniqueDates.forEach(date => {
-            const seriesForDate = this.allSeries.filter(s => s.date === date);
-            seriesForDate.forEach(s => {
+        uniqueDateOnlys.forEach(dateOnly => {
+            const seriesForDateOnly = this.allSeries.filter(s => getDateOnly(s.date) === dateOnly);
+            seriesForDateOnly.forEach(s => {
                 if (show) {
                     this.visibleSeries.add(s.id);
                 } else {
@@ -182,8 +126,95 @@ class DataLoader {
             });
 
             // Update checkbox
-            d3.select(`#vis-date-${date}`).property('checked', show);
+            d3.select(`#vis-date-${dateToValidId(dateOnly)}`).property('checked', show);
         });
+
+        // Update all year checkboxes after date changes
+        this.updateAllYearCheckboxStates();
+    }
+
+    // Toggle year visibility (applies to all dates in that year)
+    toggleYearVisibility(year) {
+        const seriesForYear = this.allSeries.filter(s => new Date(s.date).getFullYear() === year);
+        const allChecked = seriesForYear.every(s => this.visibleSeries.has(s.id));
+
+        seriesForYear.forEach(s => {
+            if (allChecked) {
+                this.visibleSeries.delete(s.id);
+            } else {
+                this.visibleSeries.add(s.id);
+            }
+        });
+
+        // Update the year checkbox state
+        this.updateYearCheckboxState(year);
+
+        // Update all date checkboxes for this year
+        const datesInYear = [...new Set(seriesForYear.map(s => getDateOnly(s.date)))];
+        datesInYear.forEach(dateOnly => {
+            const seriesForDateOnly = this.allSeries.filter(s => getDateOnly(s.date) === dateOnly);
+            const dateAllChecked = seriesForDateOnly.every(s => this.visibleSeries.has(s.id));
+            d3.select(`#vis-date-${dateToValidId(dateOnly)}`).property('checked', dateAllChecked);
+        });
+    }
+
+    // Toggle all years
+    toggleAllYears(show) {
+        const uniqueYears = [...new Set(this.allSeries.map(s => new Date(s.date).getFullYear()))];
+
+        uniqueYears.forEach(year => {
+            const seriesForYear = this.allSeries.filter(s => new Date(s.date).getFullYear() === year);
+            seriesForYear.forEach(s => {
+                if (show) {
+                    this.visibleSeries.add(s.id);
+                } else {
+                    this.visibleSeries.delete(s.id);
+                }
+            });
+
+            // Update year checkbox
+            this.updateYearCheckboxState(year);
+        });
+
+        // Update all date checkboxes as well
+        const uniqueDateOnlys = [...new Set(this.allSeries.map(s => getDateOnly(s.date)))];
+        uniqueDateOnlys.forEach(dateOnly => {
+            const seriesForDateOnly = this.allSeries.filter(s => getDateOnly(s.date) === dateOnly);
+            const allChecked = seriesForDateOnly.every(s => this.visibleSeries.has(s.id));
+            d3.select(`#vis-date-${dateToValidId(dateOnly)}`).property('checked', allChecked);
+        });
+    }
+
+    // Get year checkbox state (0 = none, 1 = some, 2 = all)
+    getYearCheckboxState(year) {
+        const seriesForYear = this.allSeries.filter(s => new Date(s.date).getFullYear() === year);
+        const visibleCount = seriesForYear.filter(s => this.visibleSeries.has(s.id)).length;
+        
+        if (visibleCount === 0) return 0;
+        if (visibleCount === seriesForYear.length) return 2;
+        return 1; // partially selected
+    }
+
+    // Update year checkbox to reflect current state
+    updateYearCheckboxState(year) {
+        const state = this.getYearCheckboxState(year);
+        const checkbox = d3.select(`#vis-year-${year}`);
+        
+        if (checkbox.node()) {
+            if (state === 0) {
+                checkbox.property('checked', false).property('indeterminate', false);
+            } else if (state === 1) {
+                checkbox.property('checked', false).property('indeterminate', true);
+            } else {
+                checkbox.property('checked', true).property('indeterminate', false);
+            }
+        }
+    }
+
+    // Update all year checkboxes
+    updateAllYearCheckboxStates() {
+        const uniqueYears = [...new Set(this.allSeries.map(s => new Date(s.date).getFullYear()))];
+        uniqueYears.forEach(year => this.updateYearCheckboxState(year));
     }
 
     getData() {

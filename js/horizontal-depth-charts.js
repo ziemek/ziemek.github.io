@@ -1,14 +1,14 @@
-// Depth Profile Chart Visualization
+// Horizontal Depth Profile Chart Visualization
 import { chartDimensions, config } from './config.js';
 import { tooltip, formatDate, getParameterLabel, generateColorPalette, addGrid, addAxes } from './utils.js';
 
-export class DepthProfileCharts {
+export class HorizontalDepthCharts {
     constructor(dataLoader) {
         this.dataLoader = dataLoader;
     }
 
-    // Enhanced depth profile visualization
-    createDepthProfiles(currentParameter) {
+    // Horizontal depth profile visualization (depth on x-axis)
+    createHorizontalDepthProfiles(currentParameter) {
         const container = d3.select('#chartsContainer');
         container.selectAll('*').remove();
 
@@ -24,13 +24,13 @@ export class DepthProfileCharts {
 
             chartDiv.append('h3')
                 .attr('class', 'chart-title')
-                .text(`${lake}`);
+                .text(`${lake} - Horizontal Depth View`);
 
-            this.createDepthChart(chartDiv, lakeData, lake, currentParameter);
+            this.createHorizontalDepthChart(chartDiv, lakeData, lake, currentParameter);
         });
     }
 
-    createDepthChart(container, lakeData, lakeName, currentParameter) {
+    createHorizontalDepthChart(container, lakeData, lakeName, currentParameter) {
         const margin = chartDimensions.margin;
         const width = chartDimensions.width - margin.left - margin.right;
         const height = chartDimensions.height - margin.bottom - margin.top;
@@ -51,23 +51,24 @@ export class DepthProfileCharts {
             d.measurements.map(m => m.depth)
         ));
 
+        // Swap x and y scales compared to regular depth profiles
         const xScale = d3.scaleLinear()
-            .domain(d3.extent(allValues))
+            .domain([0, maxDepth])
             .range([0, width]);
 
         const yScale = d3.scaleLinear()
-            .domain([0, maxDepth])
-            .range([0, height]);
+            .domain(d3.extent(allValues))
+            .range([height, 0]);
 
         // Add grid and axes
         addGrid(svg, xScale, yScale, width, height);
-        addAxes(svg, xScale, yScale, height, getParameterLabel(currentParameter), 'Depth (m)');
+        addAxes(svg, xScale, yScale, height, 'Depth (m)', getParameterLabel(currentParameter));
 
-        // Line generator
+        // Line generator - swapped x and y coordinates
         const line = d3.line()
-            .x(d => xScale(d[currentParameter]))
-            .y(d => yScale(d.depth))
-            .curve(d3.curveMonotoneY);
+            .x(d => xScale(d.depth))
+            .y(d => yScale(d[currentParameter]))
+            .curve(d3.curveMonotoneX);
 
         // Generate colors for this lake's data
         const allLakeData = this.dataLoader.getData().filter(d => d.lake === lakeName);
@@ -98,8 +99,8 @@ export class DepthProfileCharts {
                     .data(validMeasurements)
                     .enter().append('circle')
                     .attr('class', `dot dot-${datasetIndex}`)
-                    .attr('cx', d => xScale(d[currentParameter]))
-                    .attr('cy', d => yScale(d.depth))
+                    .attr('cx', d => xScale(d.depth))
+                    .attr('cy', d => yScale(d[currentParameter]))
                     .attr('r', 3)
                     .style('fill', color)
                     .style('stroke', 'white')

@@ -104,7 +104,7 @@ export function addAxes(svg, xScale, yScale, height, xLabel, yLabel) {
     if (yLabel) {
         svg.append('text')
             .attr('transform', 'rotate(-90)')
-            .attr('y', -40)
+            .attr('y', -50)
             .attr('x', -height / 2)
             .attr('dy', '1em')
             .style('text-anchor', 'middle')
@@ -171,4 +171,24 @@ export function addTrendLine(svg, data, xScale, yScale, xParam, yParam) {
         .style('font-size', '12px')
         .style('fill', '#666')
         .text(`R² = ${rSquared.toFixed(3)}`);
+}
+
+// Convert date string to valid CSS ID
+export function dateToValidId(dateString) {
+    return dateString.replace(/[:.]/g, '-');
+}
+
+// Extract date-only string (YYYY-MM-DD) from datetime string
+export function getDateOnly(dateString) {
+    return new Date(dateString).toISOString().split('T')[0];
+}
+
+// Format date-only string for display
+export function formatDateOnly(dateOnlyString) {
+    const date = new Date(dateOnlyString + 'T00:00:00');
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
 }
